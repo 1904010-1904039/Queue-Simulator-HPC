@@ -1,16 +1,16 @@
 public class Customer {
-    private int arrivalTime;
+    private long arrivalTime;
     private int serviceTime;
     private boolean served;
 
     // Constructor
-    public Customer(int arrivalTime, int serviceTime) {
-        this.arrivalTime = arrivalTime;
+    public Customer(long l, int serviceTime) {
+        this.arrivalTime = l;
         this.serviceTime = serviceTime;
-        this.served = true;
+        this.served = false;
     }
 
-    public int getArrivalTime() {
+    public long getArrivalTime() {
         return arrivalTime;
     }
 
