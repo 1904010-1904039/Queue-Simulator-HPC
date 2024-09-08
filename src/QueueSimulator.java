@@ -1,91 +1,61 @@
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.Random;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class QueueSimulator {
-    private BankQueue bankQueue;
-    private GroceryQueues groceryQueues;
-    private int simulationTime;
-    private AtomicInteger totalCustomers;
-    private AtomicInteger customersServed;
-    private AtomicInteger customersLeft;
-    private AtomicInteger totalServiceTime;
-    private Random random;
+    private final AbstractQueue queue;
+    private final int simulationTime;
+    private int clock;
+    private final List<Object[]> events;
 
-    public QueueSimulator(int simulationTime) {
+    public QueueSimulator(AbstractQueue queue, int simulationTime) {
+        this.queue = queue;
         this.simulationTime = simulationTime;
-        this.bankQueue = new BankQueue(3, 5);
-        this.groceryQueues = new GroceryQueues(3, 2);
-        this.totalCustomers = new AtomicInteger();
-        this.customersServed = new AtomicInteger();
-        this.customersLeft = new AtomicInteger();
-        this.totalServiceTime = new AtomicInteger();
-        this.random = new Random();
+        this.clock = 0;
+        this.events = new ArrayList<>();
     }
 
-    public void simulate() {
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
-        scheduler.scheduleAtFixedRate(this::addCustomer, 0, random.nextInt(41) + 20, TimeUnit.SECONDS);
-        scheduler.scheduleAtFixedRate(this::serveCustomers, 0, 1, TimeUnit.SECONDS);
-
-        try {
-            Thread.sleep(simulationTime * 60 * 1000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        scheduler.shutdown();
-        try {
-            scheduler.awaitTermination(1, TimeUnit.MINUTES);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        printResults();
+    public void addCustomer(Customer customer) {
+        events.add(new Object[]{"arrival", customer, clock});
     }
 
-    private void addCustomer() {
-
-        // customer(arrival time, service time, bool served)
-        Customer customer = new Customer(System.currentTimeMillis(), random.nextInt(241) + 60);
-
-        // increment the total number of customer with atomic operation 
-        totalCustomers.incrementAndGet();
-
-        // adding to the 
-        if (!bankQueue.addCustomer(customer)) {
-            customersLeft.incrementAndGet();
-        }
-        if (!groceryQueues.addCustomer(customer)) {
-            customersLeft.incrementAndGet();
+    public void run() {
+        while (clock < simulationTime) {
+            processEvents();
+            queue.processCustomers(Instant.now());
+            clock++;
+            try {
+                Thread.sleep(10); // Slow down simulation for real-time observation
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
-    private void serveCustomers() {
-        Customer customer = bankQueue.serveCustomer();
-        if (customer != null) {
-            customersServed.incrementAndGet();
-            totalServiceTime.addAndGet((int) customer.getServiceTime());
+    private void processEvents() {
+        List<Object[]> processedEvents = new ArrayList<>();
+        for (Object[] event : events) {
+            String eventType = (String) event[0];
+            Customer customer = (Customer) event[1];
+            int eventTime = (int) event[2];
+            if (eventTime == clock) {
+                if ("arrival".equals(eventType)) {
+                    queue.addCustomer(customer);
+                }
+                processedEvents.add(event);
+            }
         }
-        groceryQueues.serveCustomers();
+        events.removeAll(processedEvents);
     }
 
-    private void printResults() {
-        System.out.println("Total customers: " + totalCustomers.get());
-        System.out.println("Customers served: " + customersServed.get());
-        System.out.println("Customers left: " + customersLeft.get());
-        System.out.println("Average service time: " + (totalServiceTime.get() / (double) customersServed.get()));
+    public Map<String, Integer> getStats() {
+        Map<String, Integer> stats = queue.getStats();
+        if (stats.get("customersServed") > 0) {
+            stats.put("averageServiceTime", stats.get("totalServiceTime") / stats.get("customersServed"));
+        } else {
+            stats.put("averageServiceTime", 0);
+        }
+        return stats;
     }
-
-    // public static void main(String[] args) {
-    //     if (args.length != 1) {
-    //         System.out.println("Usage: java QueueSimulator <simulation time in minutes>");
-    //         return;
-    //     }
-    //     int simulationTime = Integer.parseInt(args[0]);
-    //     QueueSimulator simulator = new QueueSimulator(simulationTime);
-    //     simulator.simulate();
-    // }
 }
