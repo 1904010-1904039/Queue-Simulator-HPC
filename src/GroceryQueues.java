@@ -21,10 +21,12 @@ public class GroceryQueues extends AbstractQueue {
         for (int i = 0; i < numQueues; i++) {
             this.queues[i] = new ArrayBlockingQueue<>(maxQueueLength);
         }
+        
         this.cashiers = new Customer[numQueues];
         this.lock = new ReentrantLock();
         this.random = new Random();
         this.stats = new HashMap<>();
+
         stats.put("totalCustomers", 0);
         stats.put("customersServed", 0);
         stats.put("customersLeft", 0);

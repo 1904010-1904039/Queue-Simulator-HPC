@@ -30,11 +30,11 @@ public class BankQueue extends AbstractQueue {
         try {
             if (queue.offer(customer)) {
                 stats.put("totalCustomers", stats.get("totalCustomers") + 1);
-                return true;
+                return true; //served
             } else {
                 customer.setNotServed();
                 stats.put("customersLeft", stats.get("customersLeft") + 1);
-                return false;
+                return false; // if not served
             }
         } finally {
             lock.unlock();
@@ -45,15 +45,23 @@ public class BankQueue extends AbstractQueue {
     public void processCustomers(Instant currentTime) {
         lock.lock();
         try {
+            // for all the tellers
             for (int i = 0; i < numTellers; i++) {
+                
+                // if teller is idle and queue not empty
                 if (tellers[i] == null && !queue.isEmpty()) {
-                    tellers[i] = queue.poll();
-                    tellers[i].startService(currentTime);
+                    tellers[i] = queue.poll(); // assings next customer from the queue to the teller
+                    tellers[i].startService(currentTime); // Starts the customer service
                 } else if (tellers[i] != null && 
-                           Duration.between(tellers[i].getStartServiceTime(), currentTime).compareTo(tellers[i].getServiceTime()) >= 0) {
+                           Duration.between(tellers[i].getStartServiceTime(), currentTime).compareTo(tellers[i].getServiceTime()) >= 0) { // if the teller is not idle and customer service time has expired then,
+                    // customer is served
                     tellers[i].endService(currentTime);
+
+                    // updating the stats
                     stats.put("customersServed", stats.get("customersServed") + 1);
                     stats.put("totalServiceTime", stats.get("totalServiceTime") + (int)tellers[i].getTotalTime().toSeconds());
+
+                    // making the teller[i] available again
                     tellers[i] = null;
                 }
             }
@@ -62,6 +70,8 @@ public class BankQueue extends AbstractQueue {
         }
     }
 
+    // return a Defensive Copy of the stats
+    // This ensures that the returned map is a separate object from the internal stats map. 
     @Override
     public Map<String, Integer> getStats() {
         return new HashMap<>(stats);

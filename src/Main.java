@@ -18,13 +18,15 @@ public class Main {
         printStats(groceryStats);
     }
 
+    
     private static Map<String, Integer> runSimulation(AbstractQueue queueType, int simulationTime) {
         QueueSimulator simulator = new QueueSimulator(queueType, simulationTime);
+
         Random random = new Random();
 
         for (int i = 0; i < simulationTime; i++) {
             if (random.nextDouble() < 0.1) { // 10% chance of customer arrival each second
-                int serviceTime = 60 + random.nextInt(241); // Service time between 1-5 minutes
+                int serviceTime = 60 + random.nextInt(210); // Service time between 1-5 minutes
                 Customer customer = new Customer(Instant.now(), Duration.ofSeconds(serviceTime));
                 simulator.addCustomer(customer);
             }
