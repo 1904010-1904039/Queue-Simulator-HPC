@@ -54,18 +54,26 @@ public class GroceryQueues {
     }
 
     public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
+    
         for (int i = 0; i < numQueues; i++) {
             final int queueIndex = i;
             new Thread(() -> {
                 try {
                     locks.get(queueIndex).lock();
+
                     Customer customer = queues.get(queueIndex).take();
                     customer.setStartServiceTime(System.currentTimeMillis());
                     customer.setServed(true);
-                    Thread.sleep(customer.getServiceTime() * 1000L);
+
+                    int serviceTime = customer.getServiceTime();
+                    Thread.sleep(serviceTime * 1000L);
+
                     customer.setEndServiceTime(System.currentTimeMillis());
+
                     customersServed.incrementAndGet();
-                    totalServiceTime.addAndGet(customer.getTotalTime());
+
+                    totalServiceTime.addAndGet(serviceTime * 1000L);
+                    
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {

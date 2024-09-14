@@ -26,15 +26,26 @@ public class BankQueue {
     public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
         try {
             System.out.println("Teller available: " + tellers.availablePermits());
+
             tellers.acquire();
+
             System.out.println("Teller acquired. Serving customer...");
             Customer customer = queue.take();
-            customer.setStartServiceTime(System.currentTimeMillis());
+            long startTime = System.currentTimeMillis();
+
+            customer.setStartServiceTime(startTime);
+
             customer.setServed(true);
-            Thread.sleep(customer.getServiceTime() * 1000L);
-            customer.setEndServiceTime(System.currentTimeMillis());
+
+            int serviceTime = customer.getServiceTime();
+            Thread.sleep(serviceTime * 1000L);
+
+            long endTime = System.currentTimeMillis();
+            customer.setEndServiceTime(endTime);
             customersServed.incrementAndGet();
-            totalServiceTime.addAndGet(customer.getTotalTime());
+
+            totalServiceTime.addAndGet(serviceTime * 1000L);
+            
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {

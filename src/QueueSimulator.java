@@ -1,82 +1,3 @@
-// import java.util.Random;
-// import java.util.concurrent.*;
-// import java.util.concurrent.atomic.*;
-
-// public class QueueSimulator {
-//     private final long simulationTime;
-//     private final BankQueue bankQueue;
-//     private final GroceryQueues groceryQueues;
-//     private final AtomicInteger bankCustomersArrived = new AtomicInteger(0);
-//     private final AtomicInteger bankCustomersServed = new AtomicInteger(0);
-//     private final AtomicLong bankTotalServiceTime = new AtomicLong(0);
-//     private final AtomicInteger groceryCustomersArrived = new AtomicInteger(0);
-//     private final AtomicInteger groceryCustomersServed = new AtomicInteger(0);
-//     private final AtomicLong groceryTotalServiceTime = new AtomicLong(0);
-
-//     public QueueSimulator(long simulationTime, int bankTellers, int bankMaxQueue, int groceryCashiers, int groceryMaxQueue) {
-//         this.simulationTime = simulationTime;
-//         this.bankQueue = new BankQueue(bankTellers, bankMaxQueue);
-//         this.groceryQueues = new GroceryQueues(groceryCashiers, groceryMaxQueue);
-//     }
-
-//     public void simulate() {
-//         long startTime = System.currentTimeMillis();
-//         long endTime = startTime + (simulationTime * 60 * 1000);
-
-//         ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
-//         executor.scheduleAtFixedRate(this::generateCustomer, 0, 1, TimeUnit.SECONDS);
-//         executor.scheduleAtFixedRate(this::processQueues, 0, 1, TimeUnit.SECONDS);
-
-//         while (System.currentTimeMillis() < endTime) {
-//             try {
-//                 Thread.sleep(1000);
-//             } catch (InterruptedException e) {
-//                 Thread.currentThread().interrupt();
-//                 break;
-//             }
-//         }
-
-//         executor.shutdownNow();
-//         printResults();
-//     }
-
-//     private void generateCustomer() {
-//         Customer customer = new Customer(System.currentTimeMillis(), new Random().nextInt(5) + 1);
-        
-//         if (bankQueue.addCustomer(customer)) {
-//             bankCustomersArrived.incrementAndGet();
-//         }
-
-//         if (groceryQueues.addCustomer(customer)) {
-//             groceryCustomersArrived.incrementAndGet();
-//         }
-//     }
-
-//     private void processQueues() {
-//         bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime);
-//         groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime);
-//     }
-
-//     private void printResults() {
-//         System.out.println("Bank Queue Results:");
-//         System.out.println("Total customers arrived: " + bankCustomersArrived.get());
-//         System.out.println("Total customers served: " + bankCustomersServed.get());
-//         System.out.println("Total customers who left without being served: " + (bankCustomersArrived.get() - bankCustomersServed.get()));
-//         System.out.println("Average total time: " + (bankCustomersServed.get() > 0 ? bankTotalServiceTime.get() / bankCustomersServed.get() / 1000.0 : 0) + " seconds");
-
-//         System.out.println("\nGrocery Queues Results:");
-//         System.out.println("Total customers arrived: " + groceryCustomersArrived.get());
-//         System.out.println("Total customers served: " + groceryCustomersServed.get());
-//         System.out.println("Total customers who left without being served: " + (groceryCustomersArrived.get() - groceryCustomersServed.get()));
-//         System.out.println("Average total time: " + (groceryCustomersServed.get() > 0 ? groceryTotalServiceTime.get() / groceryCustomersServed.get() / 1000.0 : 0) + " seconds");
-//     }
-
-//     public static void main(String[] args) {
-//         QueueSimulator simulator = new QueueSimulator(10, 3, 5, 3, 2);
-//         simulator.simulate();
-//     }
-// }
-
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -91,7 +12,7 @@ public class QueueSimulator {
     private final AtomicInteger groceryCustomersArrived = new AtomicInteger(0);
     private final AtomicInteger groceryCustomersServed = new AtomicInteger(0);
     private final AtomicLong groceryTotalServiceTime = new AtomicLong(0);
-    private volatile boolean running = true;
+    private final AtomicBoolean running = new AtomicBoolean(true);
 
     public QueueSimulator(long simulationTime, int bankTellers, int bankMaxQueue, int groceryCashiers, int groceryMaxQueue) {
         this.simulationTime = simulationTime; // Minutes of simulation time
@@ -103,16 +24,22 @@ public class QueueSimulator {
         long startTime = System.currentTimeMillis();
         long endTime = startTime + (simulationTime * 60 * 1000); // Convert minutes to milliseconds
 
-        ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
 
         // Generate customers every second
         ScheduledFuture<?> customerGenerator = executor.scheduleAtFixedRate(this::generateCustomer, 0, 1, TimeUnit.SECONDS);
 
         // Process queues every second
-        ScheduledFuture<?> queueProcessor = executor.scheduleAtFixedRate(this::processQueues, 0, 1, TimeUnit.SECONDS);
+        // ScheduledFuture<?> queueProcessor = executor.scheduleAtFixedRate(this::processQueues, 0, 1, TimeUnit.SECONDS);
+
+
+        ScheduledFuture<?> bankQueueProcessor = executor.scheduleAtFixedRate(() -> bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime), 0, 1, TimeUnit.SECONDS);
+        ScheduledFuture<?> groceryQueueProcessor = executor.scheduleAtFixedRate(() -> groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime), 0, 1, TimeUnit.SECONDS); 
+
+
 
         // Let the simulation run for the specified time
-        while (System.currentTimeMillis() < endTime && running) {
+        while (System.currentTimeMillis() < endTime && running.get()) {
             try {
                 Thread.sleep(1000); // Sleep for 1 second between each iteration
             } catch (InterruptedException e) {
@@ -122,16 +49,22 @@ public class QueueSimulator {
         }
 
         // Stop running the simulation
-        running = false;
+        running.set(false);
 
         // Stop generating customers and processing queues
         customerGenerator.cancel(true);
-        queueProcessor.cancel(true);
+        // queueProcessor.cancel(true);
+
+
+        // stop generating processors
+        bankQueueProcessor.cancel(true);
+        groceryQueueProcessor.cancel(true);
 
         // Gracefully shut down the executor after the simulation
         executor.shutdown();
         try {
             if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                System.out.println("Time out over. Shutting down now");
                 executor.shutdownNow();
             }
         } catch (InterruptedException e) {
@@ -143,7 +76,7 @@ public class QueueSimulator {
     }
 
     private void generateCustomer() {
-        if (!running) return;
+        if (!running.get()) return;
 
         Customer bankCustomer = new Customer(System.currentTimeMillis(), new Random().nextInt(5) + 1);  // Random service time between 1 and 5 seconds
         Customer groceryCustomer = new Customer(System.currentTimeMillis(), new Random().nextInt(5) + 1);
@@ -158,13 +91,13 @@ public class QueueSimulator {
         }
     }
 
-    private void processQueues() {
-        if (!running) return;
+    // private void processQueues() {
+    //     if (!running) return;
 
-        // Process customers in both bank and grocery queues
-        bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime);
-        groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime);
-    }
+    //     // Process customers in both bank and grocery queues
+    //     bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime, running);
+    //     groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime, running);
+    // }
 
     private void printResults() {
         // Bank queue results
@@ -183,7 +116,7 @@ public class QueueSimulator {
     public static void main(String[] args) { 
         // Set up simulation parameters: 5 minutes of simulation, 3 tellers, max queue length of 5 for the bank,
         // and 4 grocery cashiers with a max queue length of 5
-        QueueSimulator simulator = new QueueSimulator(2, 3, 5, 3, 5);
+        QueueSimulator simulator = new QueueSimulator(5, 3, 5, 3, 5);
 
         // Start the simulation
         simulator.simulate();
