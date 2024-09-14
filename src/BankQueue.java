@@ -6,12 +6,14 @@ public class BankQueue {
     private final int maxQueueLength;
     private final BlockingQueue<Customer> queue;
     private final Semaphore tellers;
+    private final AtomicBoolean running;
 
     public BankQueue(int numTellers, int maxQueueLength) {
         this.numTellers = numTellers;
         this.maxQueueLength = maxQueueLength;
         this.queue = new LinkedBlockingQueue<>(maxQueueLength);
         this.tellers = new Semaphore(numTellers);
+        this.running = new AtomicBoolean(true);
     }
 
     public boolean addCustomer(Customer customer) {
@@ -24,6 +26,7 @@ public class BankQueue {
     }
 
     public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
+
         try {
             System.out.println("Teller available: " + tellers.availablePermits());
 
@@ -45,7 +48,7 @@ public class BankQueue {
             customersServed.incrementAndGet();
 
             totalServiceTime.addAndGet(serviceTime * 1000L);
-            
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
@@ -53,5 +56,10 @@ public class BankQueue {
             System.out.println("Teller released. Available tellers: " + tellers.availablePermits());
             tellers.release();
         }
+    }
+        // Shutdown the queue processing
+    public void shutdown() {
+        running.set(false);
+        System.out.println("BankQueue is shutting down.");
     }
 }

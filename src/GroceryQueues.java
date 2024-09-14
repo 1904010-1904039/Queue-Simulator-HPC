@@ -8,6 +8,8 @@ public class GroceryQueues {
     private final int maxQueueLength;
     private final List<BlockingQueue<Customer>> queues;
     private final List<ReentrantLock> locks;
+    private final AtomicBoolean running;
+    private final ExecutorService executorService;
 
     public GroceryQueues(int numQueues, int maxQueueLength) {
         this.numQueues = numQueues;
@@ -18,6 +20,8 @@ public class GroceryQueues {
             queues.add(new LinkedBlockingQueue<>(maxQueueLength));
             locks.add(new ReentrantLock());
         }
+        this.running = new AtomicBoolean(true);
+        this.executorService = Executors.newFixedThreadPool(numQueues);
     }
 
     public boolean addCustomer(Customer customer) {
@@ -54,32 +58,46 @@ public class GroceryQueues {
     }
 
     public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
-    
         for (int i = 0; i < numQueues; i++) {
             final int queueIndex = i;
-            new Thread(() -> {
-                try {
-                    locks.get(queueIndex).lock();
+            executorService.submit(() -> {
+                while (running.get()) {
+                    try {
+                        locks.get(queueIndex).lock();
+                        Customer customer = queues.get(queueIndex).poll(100, TimeUnit.MILLISECONDS);
+                        if (customer != null) {
+                            customer.setStartServiceTime(System.currentTimeMillis());
+                            customer.setServed(true);
 
-                    Customer customer = queues.get(queueIndex).take();
-                    customer.setStartServiceTime(System.currentTimeMillis());
-                    customer.setServed(true);
+                            int serviceTime = customer.getServiceTime();
+                            Thread.sleep(serviceTime * 1000L);
 
-                    int serviceTime = customer.getServiceTime();
-                    Thread.sleep(serviceTime * 1000L);
+                            customer.setEndServiceTime(System.currentTimeMillis());
 
-                    customer.setEndServiceTime(System.currentTimeMillis());
-
-                    customersServed.incrementAndGet();
-
-                    totalServiceTime.addAndGet(serviceTime * 1000L);
-                    
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    locks.get(queueIndex).unlock();
+                            customersServed.incrementAndGet();
+                            totalServiceTime.addAndGet(serviceTime * 1000L);
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        locks.get(queueIndex).unlock();
+                    }
                 }
-            }).start();
+            });
         }
+    }
+
+    // Shutdown the queues processing
+    public void shutdown() {
+        running.set(false);
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+        }
+        System.out.println("GroceryQueues is shutting down.");
     }
 }

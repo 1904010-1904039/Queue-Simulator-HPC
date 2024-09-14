@@ -14,6 +14,9 @@ public class QueueSimulator {
     private final AtomicLong groceryTotalServiceTime = new AtomicLong(0);
     private final AtomicBoolean running = new AtomicBoolean(true);
 
+
+    private ScheduledExecutorService executor;
+
     public QueueSimulator(long simulationTime, int bankTellers, int bankMaxQueue, int groceryCashiers, int groceryMaxQueue) {
         this.simulationTime = simulationTime; // Minutes of simulation time
         this.bankQueue = new BankQueue(bankTellers, bankMaxQueue);
@@ -24,7 +27,8 @@ public class QueueSimulator {
         long startTime = System.currentTimeMillis();
         long endTime = startTime + (simulationTime * 60 * 1000); // Convert minutes to milliseconds
 
-        ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
+        //ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
+        executor = Executors.newScheduledThreadPool(3);
 
         // Generate customers every second
         ScheduledFuture<?> customerGenerator = executor.scheduleAtFixedRate(this::generateCustomer, 0, 1, TimeUnit.SECONDS);
@@ -33,9 +37,23 @@ public class QueueSimulator {
         // ScheduledFuture<?> queueProcessor = executor.scheduleAtFixedRate(this::processQueues, 0, 1, TimeUnit.SECONDS);
 
 
-        ScheduledFuture<?> bankQueueProcessor = executor.scheduleAtFixedRate(() -> bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime), 0, 1, TimeUnit.SECONDS);
-        ScheduledFuture<?> groceryQueueProcessor = executor.scheduleAtFixedRate(() -> groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime), 0, 1, TimeUnit.SECONDS); 
+        // ScheduledFuture<?> bankQueueProcessor = executor.scheduleAtFixedRate(() -> bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime), 0, 1, TimeUnit.SECONDS);
+        // ScheduledFuture<?> groceryQueueProcessor = executor.scheduleAtFixedRate(() -> groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime), 0, 1, TimeUnit.SECONDS); 
 
+        // Process bank and grocery queues every second
+        ScheduledFuture<?> bankQueueProcessor = executor.scheduleAtFixedRate(() -> {
+            if (running.get()) {
+                bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime);
+            }
+        }, 0, 1, TimeUnit.SECONDS);
+
+        // ScheduledFuture<?> groceryQueueProcessor = executor.scheduleAtFixedRate(() -> {
+        //     if (running.get()) {
+        //         groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime);
+        //     }
+        // }, 0, 1, TimeUnit.SECONDS);
+
+        groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime);
 
 
         // Let the simulation run for the specified time
@@ -53,12 +71,12 @@ public class QueueSimulator {
 
         // Stop generating customers and processing queues
         customerGenerator.cancel(true);
-        // queueProcessor.cancel(true);
-
-
-        // stop generating processors
         bankQueueProcessor.cancel(true);
-        groceryQueueProcessor.cancel(true);
+        //groceryQueueProcessor.cancel(true);
+
+        // Shutdown the bank and grocery queues explicitly
+        shutdownBankQueue();
+        shutdownGroceryQueues();
 
         // Gracefully shut down the executor after the simulation
         executor.shutdown();
@@ -67,12 +85,30 @@ public class QueueSimulator {
                 System.out.println("Time out over. Shutting down now");
                 executor.shutdownNow();
             }
+            else {
+                System.out.println("Simulation completed successfully");
+                executor.shutdownNow();
+            }
         } catch (InterruptedException e) {
             executor.shutdownNow();
         }
 
         // After the simulation finishes, print the results
         printResults();
+    }
+
+    // Add a method to shutdown the BankQueue simulation
+    public void shutdownBankQueue() {
+        if (bankQueue != null) {
+            bankQueue.shutdown();
+        }
+    }
+
+    // Add a method to shutdown the GroceryQueues simulation
+    public void shutdownGroceryQueues() {
+        if (groceryQueues != null) {
+            groceryQueues.shutdown();
+        }
     }
 
     private void generateCustomer() {
@@ -91,14 +127,6 @@ public class QueueSimulator {
         }
     }
 
-    // private void processQueues() {
-    //     if (!running) return;
-
-    //     // Process customers in both bank and grocery queues
-    //     bankQueue.processCustomers(bankCustomersServed, bankTotalServiceTime, running);
-    //     groceryQueues.processCustomers(groceryCustomersServed, groceryTotalServiceTime, running);
-    // }
-
     private void printResults() {
         // Bank queue results
         System.out.println("Bank Queue Results:");
@@ -116,7 +144,7 @@ public class QueueSimulator {
     public static void main(String[] args) { 
         // Set up simulation parameters: 5 minutes of simulation, 3 tellers, max queue length of 5 for the bank,
         // and 4 grocery cashiers with a max queue length of 5
-        QueueSimulator simulator = new QueueSimulator(5, 3, 5, 3, 5);
+        QueueSimulator simulator = new QueueSimulator(2, 3, 5, 3, 5);
 
         // Start the simulation
         simulator.simulate();
