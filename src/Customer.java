@@ -1,53 +1,37 @@
-import java.time.Instant;
-import java.time.Duration;
-
 public class Customer {
-    private final Instant arrivalTime;
-    private final Duration serviceTime;
-    private Instant startServiceTime;
-    private Instant endServiceTime;
-    private boolean notServed;
+    private final long arrivalTime;
+    private final int serviceTime;
+    private long startServiceTime;
+    private long endServiceTime;
+    private boolean served;
 
-    // Initialize a new customer
-    public Customer(Instant arrivalTime, Duration serviceTime) {
+    public Customer(long arrivalTime, int serviceTime) {
         this.arrivalTime = arrivalTime;
         this.serviceTime = serviceTime;
-        this.notServed = false;
+        this.served = false;
     }
 
-    // setting the start time
-    public void startService(Instant startTime) {
-        this.startServiceTime = startTime;
+    public long getArrivalTime() { return arrivalTime; }
+    public int getServiceTime() { return serviceTime; }
+    public boolean isServed() { return served; }
+    public void setServed(boolean served) { this.served = served; }
+
+    public void setStartServiceTime(long startServiceTime) {
+        this.startServiceTime = startServiceTime;
     }
 
-    // ending time
-    public void endService(Instant endTime) {
-        this.endServiceTime = endTime;
+    public void setEndServiceTime(long endServiceTime) {
+        this.endServiceTime = endServiceTime;
     }
 
-    // checking of served or not
-    public void setNotServed() {
-        this.notServed = true;
+    public long getStartServiceTime() { return startServiceTime; }
+    public long getEndServiceTime() { return endServiceTime; }
+
+    public long getWaitingTime() {
+        return startServiceTime - arrivalTime;
     }
 
-    public boolean isNotServed() {
-        return notServed;
-    }
-
-    // total sevice time for a customer
-    public Duration getTotalTime() {
-        return endServiceTime != null ? Duration.between(arrivalTime, endServiceTime) : null;
-    }
-
-    public Instant getArrivalTime() {
-        return arrivalTime;
-    }
-
-    public Duration getServiceTime() {
-        return serviceTime;
-    }
-
-    public Instant getStartServiceTime() {
-        return startServiceTime;
+    public long getTotalTime() {
+        return endServiceTime - arrivalTime;
     }
 }

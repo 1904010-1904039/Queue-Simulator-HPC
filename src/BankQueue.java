@@ -1,79 +1,37 @@
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
-public class BankQueue extends AbstractQueue {
+public class BankQueue {
     private final int numTellers;
-    private final ArrayBlockingQueue<Customer> queue;
-    private final Customer[] tellers;
-    private final Lock lock;
+    private final int maxQueueLength;
+    private final BlockingQueue<Customer> queue;
+    private final Semaphore tellers;
 
     public BankQueue(int numTellers, int maxQueueLength) {
         this.numTellers = numTellers;
-        this.queue = new ArrayBlockingQueue<>(maxQueueLength);
-        this.tellers = new Customer[numTellers];
-        this.lock = new ReentrantLock();
-        this.stats = new HashMap<>();
-        stats.put("totalCustomers", 0);
-        stats.put("customersServed", 0);
-        stats.put("customersLeft", 0);
-        stats.put("totalServiceTime", 0);
+        this.maxQueueLength = maxQueueLength;
+        this.queue = new LinkedBlockingQueue<>(maxQueueLength);
+        this.tellers = new Semaphore(numTellers);
     }
 
-    @Override
     public boolean addCustomer(Customer customer) {
-        lock.lock();
-        try {
-            if (queue.offer(customer)) {
-                stats.put("totalCustomers", stats.get("totalCustomers") + 1);
-                return true; //served
-            } else {
-                customer.setNotServed();
-                stats.put("customersLeft", stats.get("customersLeft") + 1);
-                return false; // if not served
-            }
-        } finally {
-            lock.unlock();
-        }
+        return queue.offer(customer);
     }
 
-    @Override
-    public void processCustomers(Instant currentTime) {
-        lock.lock();
+    public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
         try {
-            // for all the tellers
-            for (int i = 0; i < numTellers; i++) {
-                
-                // if teller is idle and queue not empty
-                if (tellers[i] == null && !queue.isEmpty()) {
-                    tellers[i] = queue.poll(); // assings next customer from the queue to the teller
-                    tellers[i].startService(currentTime); // Starts the customer service
-                } else if (tellers[i] != null && 
-                           Duration.between(tellers[i].getStartServiceTime(), currentTime).compareTo(tellers[i].getServiceTime()) >= 0) { // if the teller is not idle and customer service time has expired then,
-                    // customer is served
-                    tellers[i].endService(currentTime);
-
-                    // updating the stats
-                    stats.put("customersServed", stats.get("customersServed") + 1);
-                    stats.put("totalServiceTime", stats.get("totalServiceTime") + (int)tellers[i].getTotalTime().toSeconds());
-
-                    // making the teller[i] available again
-                    tellers[i] = null;
-                }
-            }
+            tellers.acquire();
+            Customer customer = queue.take();
+            customer.setStartServiceTime(System.currentTimeMillis());
+            customer.setServed(true);
+            Thread.sleep(customer.getServiceTime() * 1000L);
+            customer.setEndServiceTime(System.currentTimeMillis());
+            customersServed.incrementAndGet();
+            totalServiceTime.addAndGet(customer.getTotalTime());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         } finally {
-            lock.unlock();
+            tellers.release();
         }
-    }
-
-    // return a Defensive Copy of the stats
-    // This ensures that the returned map is a separate object from the internal stats map. 
-    @Override
-    public Map<String, Integer> getStats() {
-        return new HashMap<>(stats);
     }
 }

@@ -1,103 +1,77 @@
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.Random;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.*;
 
-public class GroceryQueues extends AbstractQueue {
+public class GroceryQueues {
     private final int numQueues;
-    private final ArrayBlockingQueue<Customer>[] queues;
-    private final Customer[] cashiers;
-    private final Lock lock;
-    private final Random random;
+    private final int maxQueueLength;
+    private final List<BlockingQueue<Customer>> queues;
+    private final List<ReentrantLock> locks;
 
-    @SuppressWarnings("unchecked")
     public GroceryQueues(int numQueues, int maxQueueLength) {
         this.numQueues = numQueues;
-        this.queues = new ArrayBlockingQueue[numQueues];
+        this.maxQueueLength = maxQueueLength;
+        this.queues = new ArrayList<>();
+        this.locks = new ArrayList<>();
         for (int i = 0; i < numQueues; i++) {
-            this.queues[i] = new ArrayBlockingQueue<>(maxQueueLength);
+            queues.add(new LinkedBlockingQueue<>(maxQueueLength));
+            locks.add(new ReentrantLock());
         }
-        
-        this.cashiers = new Customer[numQueues];
-        this.lock = new ReentrantLock();
-        this.random = new Random();
-        this.stats = new HashMap<>();
-
-        stats.put("totalCustomers", 0);
-        stats.put("customersServed", 0);
-        stats.put("customersLeft", 0);
-        stats.put("totalServiceTime", 0);
     }
 
-    @Override
     public boolean addCustomer(Customer customer) {
-        lock.lock();
-        try {
-            int minQueueSize = Integer.MAX_VALUE;
-            int minQueueIndex = -1;
-            for (int i = 0; i < numQueues; i++) {
-                if (queues[i].size() < minQueueSize) {
-                    minQueueSize = queues[i].size();
-                    minQueueIndex = i;
-                } else if (queues[i].size() == minQueueSize && random.nextBoolean()) {
-                    minQueueIndex = i;
-                }
-            }
+        List<Integer> shortestQueues = new ArrayList<>();
+        int minSize = Integer.MAX_VALUE;
 
-            if (queues[minQueueIndex].offer(customer)) {
-                stats.put("totalCustomers", stats.get("totalCustomers") + 1);
-                return true;
-            } else {
-                Instant startTime = Instant.now();
-                while (Duration.between(startTime, Instant.now()).toSeconds() < 10) {
-                    for (int i = 0; i < numQueues; i++) {
-                        if (queues[i].offer(customer)) {
-                            stats.put("totalCustomers", stats.get("totalCustomers") + 1);
-                            return true;
-                        }
-                    }
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-                customer.setNotServed();
-                stats.put("customersLeft", stats.get("customersLeft") + 1);
-                return false;
+        for (int i = 0; i < numQueues; i++) {
+            int size = queues.get(i).size();
+            if (size < minSize) {
+                shortestQueues.clear();
+                shortestQueues.add(i);
+                minSize = size;
+            } else if (size == minSize) {
+                shortestQueues.add(i);
             }
-        } finally {
-            lock.unlock();
         }
+
+        if (minSize >= maxQueueLength) {
+            int retryCount = 0;
+            while (retryCount < 5) {  // Retry up to 5 times
+                try {
+                    Thread.sleep(2000);  // Shorter sleep
+                    return addCustomer(customer); // Try again
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+            return false; // Exceeding retries, customer leaves.
+        }
+
+        int chosenQueue = shortestQueues.get(new Random().nextInt(shortestQueues.size()));
+        return queues.get(chosenQueue).offer(customer);
     }
 
-    @Override
-    public void processCustomers(Instant currentTime) {
-        lock.lock();
-        try {
-            for (int i = 0; i < numQueues; i++) {
-                if (cashiers[i] == null && !queues[i].isEmpty()) {
-                    cashiers[i] = queues[i].poll();
-                    cashiers[i].startService(currentTime);
-                } else if (cashiers[i] != null && 
-                           Duration.between(cashiers[i].getStartServiceTime(), currentTime).compareTo(cashiers[i].getServiceTime()) >= 0) {
-                    cashiers[i].endService(currentTime);
-                    stats.put("customersServed", stats.get("customersServed") + 1);
-                    stats.put("totalServiceTime", stats.get("totalServiceTime") + (int)cashiers[i].getTotalTime().toSeconds());
-                    cashiers[i] = null;
+    public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
+        for (int i = 0; i < numQueues; i++) {
+            final int queueIndex = i;
+            new Thread(() -> {
+                try {
+                    locks.get(queueIndex).lock();
+                    Customer customer = queues.get(queueIndex).take();
+                    customer.setStartServiceTime(System.currentTimeMillis());
+                    customer.setServed(true);
+                    Thread.sleep(customer.getServiceTime() * 1000L);
+                    customer.setEndServiceTime(System.currentTimeMillis());
+                    customersServed.incrementAndGet();
+                    totalServiceTime.addAndGet(customer.getTotalTime());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    locks.get(queueIndex).unlock();
                 }
-            }
-        } finally {
-            lock.unlock();
+            }).start();
         }
-    }
-
-    @Override
-    public Map<String, Integer> getStats() {
-        return new HashMap<>(stats);
     }
 }
