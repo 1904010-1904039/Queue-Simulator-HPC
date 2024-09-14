@@ -180,10 +180,10 @@ public class QueueSimulator {
         System.out.println("Average service time: " + (groceryCustomersServed.get() == 0 ? 0 : groceryTotalServiceTime.get() / groceryCustomersServed.get()) + " ms");
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) { 
         // Set up simulation parameters: 5 minutes of simulation, 3 tellers, max queue length of 5 for the bank,
         // and 4 grocery cashiers with a max queue length of 5
-        QueueSimulator simulator = new QueueSimulator(5, 3, 5, 3, 5);
+        QueueSimulator simulator = new QueueSimulator(2, 3, 5, 3, 5);
 
         // Start the simulation
         simulator.simulate();

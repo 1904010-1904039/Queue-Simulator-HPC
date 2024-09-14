@@ -15,12 +15,19 @@ public class BankQueue {
     }
 
     public boolean addCustomer(Customer customer) {
-        return queue.offer(customer);
+        // return queue.offer(customer);
+        boolean added = queue.offer(customer);
+        if (!added) {
+            System.out.println("Queue is full customer cannot be added");
+        }
+        return added;
     }
 
     public void processCustomers(AtomicInteger customersServed, AtomicLong totalServiceTime) {
         try {
+            System.out.println("Teller available: " + tellers.availablePermits());
             tellers.acquire();
+            System.out.println("Teller acquired. Serving customer...");
             Customer customer = queue.take();
             customer.setStartServiceTime(System.currentTimeMillis());
             customer.setServed(true);
@@ -31,6 +38,8 @@ public class BankQueue {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
+            // Printing the Available tellers
+            System.out.println("Teller released. Available tellers: " + tellers.availablePermits());
             tellers.release();
         }
     }
